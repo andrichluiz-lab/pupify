@@ -1,0 +1,1348 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// AUTHENTICATION & MULTI-TENANCY
+// ============================================================================
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  tenantId  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@index([userId, revokedAt])
+}
+
+model Tenant {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  cnpj                  String?  @unique
+  phone                 String?
+  email                 String?
+  address               String?
+  operatingHours        String?
+  active                Boolean  @default(true)
+  onboardingCompleted   Boolean  @default(false)
+  onboardingStep        Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  users       UserTenant[]
+  patients    Patient[]
+  appointments Appointment[]
+  hospitalizations Hospitalization[]
+  medicalRecords MedicalRecord[]
+  inventory   InventoryItem[]
+  transactions FinancialTransaction[]
+  surgeries   Surgery[]
+  veterinarians Veterinarian[]
+  shifts      Shift[]
+  leaveRequests LeaveRequest[]
+  services    Service[]
+  files       File[]
+  documentTemplates DocumentTemplate[]
+  notifications Notification[]
+  whatsappInstance      WhatsAppInstance?
+  whatsappContacts      WhatsAppContact[]
+  whatsappLabels        WhatsAppLabel[]
+  whatsappQuickReplies  WhatsAppQuickReply[]
+  whatsappAutoResponses WhatsAppAutoResponse[]
+  emailTemplates        EmailTemplate[]
+  emailLogs             EmailLog[]
+  imageExams            ImageExam[]
+  quotes                Quote[]
+  tutors                Tutor[]
+  fichas                Ficha[]
+
+  @@index([active])
+  @@index([slug])
+}
+
+enum Role {
+  SUPER_ADMIN
+  CLINIC_ADMIN
+  VETERINARIAN
+  RECEPTIONIST
+  TECHNICIAN
+  CLIENT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatarUrl String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenants               UserTenant[]
+  refreshTokens         RefreshToken[]
+  notifications         Notification[]
+  whatsappAssignments   WhatsAppContact[]
+
+  @@index([email])
+  @@index([active])
+}
+
+model UserTenant {
+  id          String   @id @default(cuid())
+  userId      String
+  tenantId    String
+  role        Role
+  permVersion Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions UserPermission[]
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([role])
+}
+
+// ============================================================================
+// PERMISSIONS
+// ============================================================================
+
+enum Permission {
+  patients_view
+  patients_create
+  patients_edit
+  patients_delete
+
+  tutors_view
+  tutors_create
+  tutors_edit
+  tutors_delete
+
+  agenda_view
+  agenda_create
+  agenda_edit
+  agenda_delete
+  agenda_cancel
+
+  consultations_view
+  consultations_create
+  consultations_edit
+  consultations_delete
+  consultations_ai
+
+  hospitalizations_view
+  hospitalizations_create
+  hospitalizations_edit
+  hospitalizations_delete
+
+  surgeries_view
+  surgeries_create
+  surgeries_edit
+  surgeries_delete
+
+  financial_view
+  financial_create
+  financial_edit
+  financial_delete
+  financial_reports
+
+  inventory_view
+  inventory_create
+  inventory_edit
+  inventory_delete
+
+  services_view
+  services_create
+  services_edit
+  services_delete
+
+  templates_view
+  templates_create
+  templates_edit
+  templates_delete
+
+  files_view
+  files_upload
+  files_delete
+
+  team_view
+  team_create
+  team_edit
+  team_delete
+  team_permissions
+
+  dashboard_view
+
+  settings_view
+  settings_edit
+  settings_clinic
+
+  whatsapp_view
+  whatsapp_send
+  whatsapp_manage
+
+  image_exams_view
+  image_exams_create
+  image_exams_edit
+  image_exams_delete
+  image_exams_ai
+
+  hospitalizations_ai
+  surgeries_ai
+
+  fichas_view
+  fichas_create
+  fichas_edit
+  fichas_delete
+}
+
+model RolePermission {
+  id         String     @id @default(cuid())
+  role       Role
+  permission Permission
+  createdAt  DateTime   @default(now())
+
+  @@unique([role, permission])
+  @@index([role])
+}
+
+model UserPermission {
+  id           String     @id @default(cuid())
+  userTenantId String
+  permission   Permission
+  granted      Boolean    @default(true)
+  updatedBy    String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  userTenant UserTenant @relation(fields: [userTenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userTenantId, permission])
+  @@index([userTenantId])
+}
+
+// ============================================================================
+// CORE ENTITIES
+// ============================================================================
+
+model Tutor {
+  id                    String    @id @default(cuid())
+  tenantId              String?
+  name                  String
+  email                 String?   @unique
+  phone                 String
+  cpf                   String?   @unique
+  address               String?
+  personType            String?
+  rg                    String?
+  nationality           String?
+  sex                   String?
+  birthDate             DateTime?
+  howFound              String?
+  profession            String?
+  municipalRegistration String?
+  cep                   String?
+  addressStreet         String?
+  addressNumber         String?
+  addressComplement     String?
+  addressNeighborhood   String?
+  addressCity           String?
+  addressState          String?
+  addressReference      String?
+  contacts              Json?
+  notes                 String?   @db.Text
+  tags                  String[]
+  acceptEmail           Boolean   @default(true)
+  acceptSms             Boolean   @default(true)
+  acceptCampaignSms     Boolean   @default(true)
+  acceptWhatsapp        Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant           Tenant?               @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  patients         Patient[]
+  appointments     Appointment[]
+  transactions     FinancialTransaction[]
+  whatsappContacts WhatsAppContact[]
+  quotes           Quote[]
+  fichas           Ficha[]
+
+  @@index([tenantId])
+}
+
+model Veterinarian {
+  id         String   @id @default(cuid())
+  name       String
+  crmv       String
+  specialty  String?
+  avatarUrl  String?
+  tenantId   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments     Appointment[]
+  hospitalizations Hospitalization[]
+  surgeries        Surgery[]
+  medicalRecords   MedicalRecord[]
+  imageExams       ImageExam[]
+
+  @@index([tenantId])
+  @@index([crmv])
+}
+
+model Patient {
+  id                String   @id @default(cuid())
+  name              String
+  species           Species
+  breed             String
+  sex               Sex
+  birthDate         DateTime
+  weightKg          Float
+  color             String?
+  microchip         String?  @unique
+  neutered          Boolean  @default(false)
+  photoUrl          String?
+  tutorId           String
+  tenantId          String
+  allergies         String[]
+  chronicConditions String[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tutor             Tutor              @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]
+  hospitalizations  Hospitalization[]
+  surgeries         Surgery[]
+  medicalRecords    MedicalRecord[]
+  transactions      FinancialTransaction[]
+  whatsappContacts  WhatsAppContact[]
+  imageExams        ImageExam[]
+  quotes            Quote[]
+  fichas            Ficha[]
+
+  @@index([tutorId])
+  @@index([tenantId])
+  @@index([species])
+}
+
+enum Species {
+  Cao
+  Gato
+  Ave
+  Roedor
+  Reptil
+  Outro
+}
+
+enum Sex {
+  M
+  F
+}
+
+// ============================================================================
+// APPOINTMENTS
+// ============================================================================
+
+model Appointment {
+  id                      String            @id @default(cuid())
+  patientId               String
+  tutorId                 String
+  veterinarianId          String
+  tenantId                String
+  type                    AppointmentType
+  status                  AppointmentStatus
+  startsAt                DateTime          @db.Timestamptz
+  endsAt                  DateTime          @db.Timestamptz
+  notes                   String?
+  room                    String?
+  whatsappReminderSentAt  DateTime?         @db.Timestamptz
+  emailReminderSentAt     DateTime?         @db.Timestamptz
+  createdAt               DateTime          @default(now()) @db.Timestamptz
+  updatedAt               DateTime          @updatedAt @db.Timestamptz
+
+  patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tutor        Tutor         @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  veterinarian Veterinarian  @relation(fields: [veterinarianId], references: [id])
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([tutorId])
+  @@index([veterinarianId])
+  @@index([tenantId])
+  @@index([startsAt])
+  @@index([status])
+  @@index([whatsappReminderSentAt])
+}
+
+enum AppointmentType {
+  consulta
+  retorno
+  vacina
+  cirurgia
+  exame
+  banho_tosa
+  emergencia
+}
+
+enum AppointmentStatus {
+  agendado
+  confirmado
+  em_atendimento
+  concluido
+  cancelado
+  falta
+}
+
+// ============================================================================
+// HOSPITALIZATIONS
+// ============================================================================
+
+model Hospitalization {
+  id               String                  @id @default(cuid())
+  patientId        String
+  veterinarianId   String
+  tenantId         String
+  admittedAt       DateTime
+  dischargedAt     DateTime?
+  reason           String
+  kennel           String
+  status           HospitalizationStatus
+  painLevel        Int?
+  dietNotes        String?
+  dailyRate        Float?
+  dischargeReport  String?                 @db.Text
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  patient          Patient                 @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  veterinarian     Veterinarian            @relation(fields: [veterinarianId], references: [id])
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vitals           VitalSigns[]
+  orders           TreatmentOrder[]
+
+  @@index([patientId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([admittedAt])
+}
+
+enum HospitalizationStatus {
+  estavel
+  observacao
+  critico
+  recuperacao
+}
+
+model VitalSigns {
+  id                String         @id @default(cuid())
+  hospitalizationId String
+  temperature       Float?
+  heartRate         Int?
+  respiratoryRate   Int?
+  bloodPressure     String?
+  oxygenSaturation  Int?
+  updatedAt         DateTime       @default(now())
+
+  hospitalization   Hospitalization @relation(fields: [hospitalizationId], references: [id], onDelete: Cascade)
+
+  @@index([hospitalizationId])
+}
+
+model TreatmentOrder {
+  id                String         @id @default(cuid())
+  hospitalizationId String
+  time              String
+  drug              String
+  dose              String
+  route             String
+  done              Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  hospitalization   Hospitalization @relation(fields: [hospitalizationId], references: [id], onDelete: Cascade)
+
+  @@index([hospitalizationId])
+}
+
+// ============================================================================
+// MEDICAL RECORDS
+// ============================================================================
+
+model MedicalRecord {
+  id               String           @id @default(cuid())
+  patientId        String
+  veterinarianId   String
+  tenantId         String
+  veterinarianName String
+  durationSec      Int?
+  chiefComplaint   String
+  mode             ConsultationMode @default(manual)
+  status           MedicalRecordStatus
+  tags             String[]
+  
+  // Campos para modo manual estruturado
+  anamnesis        String?  @db.Text
+  differentialDiagnosis String?  @db.Text
+  diagnosticPlan   String?  @db.Text
+  treatmentPlan    String?  @db.Text
+  
+  // Notas e anexos
+  notes            String?  @db.Text
+  symptoms         Json?    // Array de sintomas estruturados
+  diagnosis        String?  @db.Text
+  pdvItems         Json?    // Items do mini PDV [{id, type, name, price, quantity}]
+  
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  patient          Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  veterinarian     Veterinarian     @relation(fields: [veterinarianId], references: [id])
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  soap             SOAPNote?
+  prescriptions    Prescription[]
+  consultationDocuments ConsultationDocument[]
+
+  @@index([patientId])
+  @@index([veterinarianId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([mode])
+  @@index([createdAt])
+}
+
+enum MedicalRecordStatus {
+  gravando
+  transcrevendo
+  rascunho
+  finalizado
+}
+
+enum ConsultationMode {
+  ai
+  manual
+}
+
+model SOAPNote {
+  id               String         @id @default(cuid())
+  medicalRecordId  String         @unique
+  subjective       String         @db.Text
+  objective        String         @db.Text
+  assessment       String         @db.Text
+  plan             String         @db.Text
+
+  medicalRecord    MedicalRecord  @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+}
+
+model Prescription {
+  id               String         @id @default(cuid())
+  medicalRecordId  String
+  drug             String
+  dosage           String
+  frequency        String
+  duration         String
+
+  medicalRecord    MedicalRecord  @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  @@index([medicalRecordId])
+}
+
+// Documentos gerados na consulta (rascunho ou prontuário finalizado)
+model ConsultationDocument {
+  id              String   @id @default(cuid())
+  medicalRecordId String?
+  draftId         String?
+  templateId      String?
+  type            TemplateType
+  title           String
+  content         String   @db.Text
+  printedAt       DateTime?
+  sharedVia       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  medicalRecord   MedicalRecord?     @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+  draft           ConsultationDraft? @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([medicalRecordId])
+  @@index([draftId])
+  @@index([type])
+}
+
+// ============================================================================
+// SERVICES
+// ============================================================================
+
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String
+  price       Float
+  durationMin Int?
+  active      Boolean  @default(true)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([category])
+}
+
+// ============================================================================
+// INVENTORY
+// ============================================================================
+
+model InventoryItem {
+  id                    String             @id @default(cuid())
+  sku                   String
+  name                  String
+  category              InventoryCategory
+  unit                  String
+  stock                 Float
+  minStock              Float
+  unitCost              Float
+  salePrice             Float
+  supplier              String?
+  batch                 String?
+  expiresAt             DateTime?
+  requiresPrescription  Boolean            @default(false)
+  tenantId              String
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([category])
+  @@index([sku])
+  @@unique([tenantId, sku])
+}
+
+enum InventoryCategory {
+  medicamento
+  vacina
+  insumo
+  racao
+  acessorio
+}
+
+// ============================================================================
+// FINANCIAL
+// ============================================================================
+
+model FinancialTransaction {
+  id           String        @id @default(cuid())
+  direction    TxDirection
+  category     TxCategory
+  description  String
+  amount       Float
+  status       TxStatus
+  dueDate      DateTime
+  paidAt       DateTime?
+  counterparty String
+  method       TxMethod?
+  patientId    String?
+  tutorId      String?
+  fichaId      String?
+  tenantId     String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  patient Patient? @relation(fields: [patientId], references: [id])
+  tutor   Tutor?   @relation(fields: [tutorId], references: [id])
+  ficha   Ficha?   @relation(fields: [fichaId], references: [id], onDelete: SetNull)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([direction])
+  @@index([category])
+  @@index([status])
+  @@index([dueDate])
+  @@index([patientId])
+  @@index([tutorId])
+  @@index([fichaId])
+  @@index([tenantId])
+}
+
+enum TxDirection {
+  entrada
+  saida
+}
+
+enum TxStatus {
+  pago
+  pendente
+  atrasado
+}
+
+enum TxCategory {
+  consulta
+  cirurgia
+  exame
+  produto
+  salario
+  aluguel
+  fornecedor
+  utilidades
+  marketing
+  outros
+}
+
+enum TxMethod {
+  pix
+  credito
+  debito
+  dinheiro
+  boleto
+}
+
+// ============================================================================
+// SURGERIES
+// ============================================================================
+
+model Surgery {
+  id                    String        @id @default(cuid())
+  patientId             String
+  veterinarianId       String
+  tenantId              String
+  procedure             String
+  surgeon               String
+  anesthetist           String?
+  assistant             String?
+  scheduledFor          DateTime
+  estimatedDurationMin  Int
+  room                  String
+  risk                  SurgeryRisk
+  status                SurgeryStatus
+  notes                 String?
+  surgeryNotes          String?       @db.Text
+  anesthesiaNotes       String?       @db.Text
+  pdvItems              Json?         // Items do mini PDV [{id, type, name, price, quantity}]
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  patient               Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  veterinarian          Veterinarian @relation(fields: [veterinarianId], references: [id])
+  tenant                Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  checklistItems        ChecklistItem[]
+
+  @@index([patientId])
+  @@index([veterinarianId])
+  @@index([tenantId])
+  @@index([scheduledFor])
+  @@index([status])
+}
+
+enum SurgeryRisk {
+  baixo
+  medio
+  alto
+}
+
+enum SurgeryStatus {
+  agendada
+  pre_op
+  em_andamento
+  recuperacao
+  concluida
+  cancelada
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  surgeryId String
+  label     String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+
+  surgery   Surgery  @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
+
+  @@index([surgeryId])
+}
+
+// ============================================================================
+// FILES (S3/Backblaze B2)
+// ============================================================================
+
+model File {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  key          String
+  bucket       String
+  entityType   String
+  entityId     String
+  tenantId     String
+  uploadedBy   String
+  createdAt    DateTime @default(now())
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  imageExams   ImageExam[]
+
+  @@index([tenantId])
+  @@index([entityType, entityId])
+  @@index([key])
+}
+
+// ============================================================================
+// TEAM MANAGEMENT
+// ============================================================================
+
+model Shift {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  startTime   String
+  endTime     String
+  daysOfWeek  Int[]
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignments ShiftAssignment[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
+enum AssignmentStatus {
+  presente
+  ausente
+  folga
+}
+
+model ShiftAssignment {
+  id          String           @id @default(cuid())
+  shiftId     String
+  userId      String
+  tenantId    String
+  date        DateTime
+  status      AssignmentStatus @default(folga)
+  checkInAt   DateTime?
+  checkOutAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  shift       Shift   @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, userId, date])
+  @@index([shiftId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([date])
+}
+
+model TimeEntry {
+  id           String   @id @default(cuid())
+  userId       String
+  tenantId     String
+  date         DateTime
+  checkIn      DateTime
+  checkOut     DateTime?
+  breakMinutes Int      @default(0)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([date])
+}
+
+enum LeaveType {
+  ferias
+  licenca_medica
+  licenca_maternidade
+  outro
+}
+
+enum LeaveStatus {
+  pendente
+  aprovado
+  rejeitado
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  userId      String
+  tenantId    String
+  type        LeaveType
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  status      LeaveStatus @default(pendente)
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([startDate])
+}
+
+// ============================================================================
+// CONSULTATION DRAFTS (AI-assisted medical records)
+// ============================================================================
+
+model ConsultationDraft {
+  id               String   @id @default(cuid())
+  veterinarianId   String
+  tenantId         String
+  patientId        String?
+  patientName      String
+  tutorName        String
+  specialty        String   @default("generalista")
+  mode             ConsultationMode @default(manual)
+  transcript       Json?    // [{speaker: "veterinario" | "tutor", text: string, timestampSeconds: number}]
+  soapJson         Json?    // {subjective, objective, assessment, plan}
+  finalReport      String?  // Full text report
+  audioS3Key       String?  // S3 key for the full audio file
+  durationSeconds  Int      @default(0)
+  
+  // Campos para modo manual estruturado
+  anamnesis        String?  @db.Text
+  symptoms         Json?    // Array de sintomas estruturados
+  diagnosis        String?  @db.Text
+  diagnosticPlan   String?  @db.Text
+  treatmentPlan    String?  @db.Text
+  notes            String?  @db.Text
+  pdvItems         Json?    // Items do mini PDV [{id, type, name, price, quantity}]
+  
+  lastAutosaveAt   DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transcripts      ConsultationTranscript[]
+  documents        ConsultationDocument[]
+
+  @@index([veterinarianId])
+  @@index([tenantId])
+  @@index([patientId])
+  @@index([lastAutosaveAt])
+  @@index([mode])
+}
+
+model ConsultationTranscript {
+  id                 String   @id @default(cuid())
+  consultationDraftId String
+  speaker            String   // "veterinario" | "tutor"
+  text               String
+  timestampSeconds   Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  consultationDraft  ConsultationDraft @relation(fields: [consultationDraftId], references: [id], onDelete: Cascade)
+
+  @@index([consultationDraftId])
+  @@index([timestampSeconds])
+}
+
+// ============================================================================
+// DOCUMENT TEMPLATES
+// ============================================================================
+
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  type        TemplateType
+  name        String
+  description String?
+  content     String   @db.Text  // Conteúdo do template (JSON ou texto)
+  variables   Json?    // Lista de variáveis que o template usa
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([type])
+}
+
+enum TemplateType {
+  receita
+  exame
+  termo
+  atestado
+  declaracao
+  prontuario_modelo
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([tenantId])
+}
+
+// ============================================================================
+// WHATSAPP INTEGRATION (Evolution API)
+// ============================================================================
+
+enum WhatsAppStatus {
+  disconnected
+  connecting
+  connected
+}
+
+model WhatsAppInstance {
+  id                  String          @id @default(cuid())
+  tenantId            String          @unique
+  instanceName        String          @unique
+  instanceId          String?
+  instanceToken       String?
+  status              WhatsAppStatus  @default(disconnected)
+  phoneNumber         String?
+  autoReplyEnabled    Boolean         @default(false)
+  autoReplyOutOfHours String?         @db.Text
+  autoReplyGreeting   String?         @db.Text
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts  WhatsAppContact[]
+  messages  WhatsAppMessage[]
+}
+
+model WhatsAppContact {
+  id            String    @id @default(cuid())
+  instanceId    String
+  tenantId      String
+  jid           String
+  lid           String?   @db.Text
+  name          String?
+  phone         String
+  profilePic    String?
+  patientId     String?
+  tutorId       String?
+  assignedToId  String?
+  lastMessageAt DateTime?
+  archived      Boolean   @default(false)
+  internalNotes String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  instance   WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patient    Patient?         @relation(fields: [patientId], references: [id])
+  tutor      Tutor?           @relation(fields: [tutorId], references: [id])
+  assignedTo User?            @relation(fields: [assignedToId], references: [id])
+  messages   WhatsAppMessage[]
+  labels     WhatsAppLabel[]
+
+  @@unique([instanceId, jid])
+  @@index([tenantId])
+  @@index([tutorId])
+  @@index([lastMessageAt])
+  @@index([archived])
+  @@index([assignedToId])
+}
+
+model WhatsAppMessage {
+  id         String   @id @default(cuid())
+  instanceId String
+  tenantId   String
+  contactId  String
+  messageId  String
+  fromMe     Boolean  @default(false)
+  body       String   @db.Text
+  type       String   @default("text")
+  mediaUrl   String?
+  audioDuration Int?
+  status     String   @default("received")
+  timestamp  DateTime
+  createdAt  DateTime @default(now())
+
+  instance  WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  contact   WhatsAppContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, messageId])
+  @@index([contactId])
+  @@index([tenantId])
+  @@index([timestamp])
+}
+
+model WhatsAppLabel {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  color     String   @default("#6B7280")
+  createdAt DateTime @default(now())
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts WhatsAppContact[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model WhatsAppQuickReply {
+  id        String   @id @default(cuid())
+  tenantId  String
+  shortcut  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shortcut])
+  @@index([tenantId])
+}
+
+model WhatsAppAutoResponse {
+  id        String   @id @default(cuid())
+  tenantId  String
+  trigger   String
+  response  String   @db.Text
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, active])
+}
+
+// ============================================================================
+// EMAIL SYSTEM
+// ============================================================================
+
+enum EmailType {
+  appointment_confirmation
+  appointment_reminder
+  password_reset
+  hospitalization_update
+  financial_report
+  surgery_reminder
+  custom
+}
+
+enum EmailStatus {
+  pending
+  sent
+  failed
+}
+
+model EmailTemplate {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  subject     String
+  body        String    @db.Text
+  type        EmailType
+  variables   Json?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  logs        EmailLog[]
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([active])
+}
+
+model EmailLog {
+  id          String        @id @default(cuid())
+  tenantId    String
+  templateId  String?
+  to          String
+  subject     String
+  status      EmailStatus   @default(pending)
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime      @default(now())
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template    EmailTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([sentAt])
+  @@index([templateId])
+}
+
+// ============================================================================
+// IMAGE EXAMS
+// ============================================================================
+
+enum ImageExamType {
+  radiografia
+  ultrassom
+  tomografia
+  ressonancia
+  laboratorio
+  outro
+}
+
+enum ImageExamStatus {
+  pendente
+  analisando
+  concluido
+  cancelado
+}
+
+model ImageExam {
+  id                String          @id @default(cuid())
+  patientId         String
+  veterinarianId    String?
+  tenantId          String
+  type              ImageExamType
+  status            ImageExamStatus @default(pendente)
+  fileId            String?
+  fileIds           Json?           // Array of File IDs for multi-file analysis
+  extractedText     String?         @db.Text
+  aiAnalysis        Json?
+  aiReport          String?         @db.Text
+  veterinarianNotes String?         @db.Text
+  pdvItems          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  veterinarian  Veterinarian? @relation(fields: [veterinarianId], references: [id])
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  file          File?         @relation(fields: [fileId], references: [id])
+
+  @@index([patientId])
+  @@index([veterinarianId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([type])
+  @@index([fileId])
+}
+
+// ============================================================================
+// QUOTES (ORÇAMENTOS)
+// ============================================================================
+
+enum QuoteStatus {
+  pendente
+  aprovado
+  recusado
+  expirado
+}
+
+model Quote {
+  id         String      @id @default(cuid())
+  tutorId    String
+  patientId  String?
+  tenantId   String
+  status     QuoteStatus @default(pendente)
+  items      Json
+  total      Float
+  notes      String?     @db.Text
+  validUntil DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  tutor   Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  patient Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId])
+  @@index([patientId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+// ============================================================================
+// FICHA ABERTA (OPEN ENCOUNTER)
+// ============================================================================
+
+enum FichaStatus {
+  aberto
+  aguardando_cobranca
+  fechado
+}
+
+model Ficha {
+  id            String      @id @default(cuid())
+  tenantId      String
+  patientId     String
+  tutorId       String?
+  status        FichaStatus @default(aberto)
+  openedAt      DateTime    @default(now())
+  closedAt      DateTime?
+  openedById    String?
+  closedById    String?
+  notes         String?     @db.Text
+  totalAmount   Float       @default(0)
+  paymentMethod String?
+  transactionId String?     @unique
+
+  items         FichaItem[]
+  transactions  FinancialTransaction[]
+
+  patient       Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tutor         Tutor?      @relation(fields: [tutorId], references: [id], onDelete: SetNull)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, patientId])
+}
+
+model FichaItem {
+  id         String   @id @default(cuid())
+  fichaId    String
+  type       String
+  sourceId   String?
+  sourceType String?
+  name       String
+  quantity   Int      @default(1)
+  unitPrice  Float
+  total      Float
+  addedById  String?
+  addedAt    DateTime @default(now())
+
+  ficha      Ficha    @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+
+  @@index([fichaId])
+}
